@@ -24,7 +24,7 @@ WORKDIR="$(pwd)/_appimg_${BIN_NAME}"
 APPDIR="${WORKDIR}/${APPNAME}.AppDir"
 
 rm -rf "$WORKDIR"
-mkdir -p "${APPDIR}/usr"
+mkdir -p "${APPDIR}"
 
 case "${MARCH_OPTION}" in
   detect)
@@ -63,10 +63,19 @@ case "${MARCH_OPTION}" in
     ;;
 esac
 
-echo "==> Installing ${PKG} into ${APPDIR}/usr via Portage..."
-sudo ROOT="${APPDIR}/usr" \
-     emerge -v --root="${APPDIR}/usr" --nodeps \
+echo "==> Installing ${PKG} into ${APPDIR} via Portage..."
+sudo ROOT="${APPDIR}" \
+     emerge -v --root="${APPDIR}" --nodeps \
      --oneshot --buildpkg=n --binpkg-respect-use=y "${PKG}"
+
+if [[ -d "${APPDIR}/usr" ]]; then
+  echo "==> Restructuring to AppImage format..."
+  mkdir -p "${APPDIR}_temp/usr"
+  mv "${APPDIR}/usr"/* "${APPDIR}_temp/usr/" 2>/dev/null || true
+  rm -rf "${APPDIR}"/*
+  mv "${APPDIR}_temp/usr" "${APPDIR}/"
+  rmdir "${APPDIR}_temp"
+fi
 
 
 BIN_PATH="$(command -v --posix true >/dev/null 2>&1 || true; \
@@ -114,7 +123,7 @@ if command -v lddtree >/dev/null 2>&1; then
     [[ -e "$L" ]] || continue
     BAS="$(basename "$L")"
     case "$BAS" in
-      ld-linux*|libc.so.*|libm.so.*|libdl.so.*|libpthread.so.*|librt.so.*|libnsl.so.*|libresolv.so.*|libcrypt.so.*|linux-vdso.so.*)
+      ld-linux*|libc.so.*|libm.so.*|libdl.so.*|libpthread.so.*|librt.so.*|libnsl.so.*|libresolv.so.*|libcrypt.so.*|linux-vdso.so.*|libasound_module_*)
         echo "    Skipping core system lib: ${BAS}"
         continue
         ;;
@@ -127,7 +136,19 @@ if command -v lddtree >/dev/null 2>&1; then
     fi
     
     echo "    Bundling system library: ${BAS}"
-    TGT_DIR="${APPDIR}/usr/$(basename "$(dirname "$L")")"
+    LIB_DIR="$(dirname "$L")"
+    
+    if [[ "${LIB_DIR}" == "/usr/lib64" ]]; then
+      TGT_DIR="${APPDIR}/usr/lib64"
+    elif [[ "${LIB_DIR}" == "/usr/lib" ]]; then
+      TGT_DIR="${APPDIR}/usr/lib"
+    elif [[ "${LIB_DIR}" == /usr/* ]]; then
+      TGT_DIR="${APPDIR}/usr/lib64"
+      echo "      -> Moving non-standard library from ${LIB_DIR} to main lib64 directory"
+    else
+      TGT_DIR="${APPDIR}/usr/lib64"
+      echo "      -> Moving system library from ${LIB_DIR} to main lib64 directory"
+    fi
     mkdir -p "$TGT_DIR"
     
     if [[ -L "$L" ]]; then
