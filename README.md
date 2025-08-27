@@ -20,9 +20,7 @@ git clone https://github.com/StefanCristian/emerge-appimage.git
 cd emerge-appimage
 
 # Run the AppImage creation script for a specific package
-./create-appimage.sh <package-name> short-name uppercharacter-name
+./mk-appimage.sh <package-name> short-name uppercharacter-name
 ```
 
 Replace `<package-name>` with the desired Gentoo package (e.g., `firefox`).
-
-For more detailed instructions, refer to the [docs/USAGE.md](docs/USAGE.md) file.
