@@ -4,16 +4,20 @@ set -euo pipefail
 if [[ $# -lt 2 ]]; then
   echo "Usage: $0 <category/pkg> <binary_name> [AppName] [march_option]"
   echo "Example: $0 app-misc/jq jq JQ"
-  echo "         $0 app-misc/jq jq JQ native    # Force -march=native"
-  echo "         $0 app-misc/jq jq JQ x86-64   # Force -march=x86-64"
-  echo "         $0 app-misc/jq jq JQ detect   # Auto-detect from system"
+  echo "         $0 app-misc/jq jq JQ native"
+  echo "         $0 app-misc/jq jq JQ x86-64"
+  echo "         $0 app-misc/jq jq JQ detect"
+  echo "         $0 games-strategy/seven-kingdoms 7kaa 7KAA x86-64"
+  echo ""
+  echo "Note: Default is x86-64 for maximum portability"
+  echo "      System libraries will be bundled into the AppImage"
   exit 1
 fi
 
 PKG="$1"
 BIN_NAME="$2"
 APPNAME="${3:-$(echo "$BIN_NAME" | tr '[:lower:]' '[:upper:]')}"
-MARCH_OPTION="${4:-detect}"
+MARCH_OPTION="${4:-x86-64}"
 ARCH="$(uname -m)"
 
 WORKDIR="$(pwd)/_appimg_${BIN_NAME}"
@@ -38,25 +42,30 @@ case "${MARCH_OPTION}" in
     ;;
   native)
     echo "==> Forcing -march=native compilation (not portable!)"
-    export CFLAGS="${CFLAGS:-} -march=native -mtune=native"
-    export CXXFLAGS="${CXXFLAGS:-} -march=native -mtune=native"
+    export CFLAGS="$(echo "${CFLAGS:-}" | sed 's/-march=[^[:space:]]*//')"
+    export CXXFLAGS="$(echo "${CXXFLAGS:-}" | sed 's/-march=[^[:space:]]*//')"
+    export CFLAGS="${CFLAGS} -march=native -mtune=native"
+    export CXXFLAGS="${CXXFLAGS} -march=native -mtune=native"
     ;;
   x86-64|x86-64-v2|x86-64-v3|x86-64-v4)
-    echo "==> Forcing -march=${MARCH_OPTION} compilation"
-    export CFLAGS="${CFLAGS:-} -march=${MARCH_OPTION}"
-    export CXXFLAGS="${CXXFLAGS:-} -march=${MARCH_OPTION}"
+    echo "==> Using -march=${MARCH_OPTION} compilation for portability"
+    export CFLAGS="$(echo "${CFLAGS:-}" | sed 's/-march=[^[:space:]]*//')"
+    export CXXFLAGS="$(echo "${CXXFLAGS:-}" | sed 's/-march=[^[:space:]]*//')"
+    export CFLAGS="${CFLAGS} -march=${MARCH_OPTION}"
+    export CXXFLAGS="${CXXFLAGS} -march=${MARCH_OPTION}"
     ;;
   *)
     echo "==> Using custom -march=${MARCH_OPTION} compilation"
-    export CFLAGS="${CFLAGS:-} -march=${MARCH_OPTION}"
-    export CXXFLAGS="${CXXFLAGS:-} -march=${MARCH_OPTION}"
+    export CFLAGS="$(echo "${CFLAGS:-}" | sed 's/-march=[^[:space:]]*//')"
+    export CXXFLAGS="$(echo "${CXXFLAGS:-}" | sed 's/-march=[^[:space:]]*//')"
+    export CFLAGS="${CFLAGS} -march=${MARCH_OPTION}"
+    export CXXFLAGS="${CXXFLAGS} -march=${MARCH_OPTION}"
     ;;
 esac
 
 echo "==> Installing ${PKG} into ${APPDIR}/usr via Portage..."
-
 sudo ROOT="${APPDIR}/usr" \
-     emerge -v --root="${APPDIR}/usr" --root-deps=rdeps \
+     emerge -v --root="${APPDIR}/usr" --nodeps \
      --oneshot --buildpkg=n --binpkg-respect-use=y "${PKG}"
 
 
@@ -70,14 +79,10 @@ fi
 echo "==> Creating AppRun..."
 cat > "${APPDIR}/AppRun" <<'EOF'
 #!/bin/sh
-# Use $APPDIR set by AppImage runtime
 HERE="$(dirname "$(readlink -f "$0")")"
 export APPDIR="$HERE"
-# Prefer our libs
 export LD_LIBRARY_PATH="$APPDIR/usr/lib:$APPDIR/usr/lib64:$LD_LIBRARY_PATH"
-# Add our bin first
 export PATH="$APPDIR/usr/bin:$PATH"
-# Execute the binary name from the .desktop Exec= line (first arg or default)
 exec "$APPDIR/usr/bin/__BIN__" "$@"
 EOF
 chmod +x "${APPDIR}/AppRun"
@@ -103,18 +108,43 @@ convert -size 256x256 xc:white -gravity center -pointsize 64 \
 echo "==> Auditing shared libraries..."
 mkdir -p "${APPDIR}/usr/lib" "${APPDIR}/usr/lib64"
 if command -v lddtree >/dev/null 2>&1; then
+  echo "    Bundling required libraries from system..."
   mapfile -t LIBS < <(lddtree -l "${BIN_PATH}" | tr ' ' '\n' | sort -u)
   for L in "${LIBS[@]}"; do
     [[ -e "$L" ]] || continue
     BAS="$(basename "$L")"
     case "$BAS" in
-      ld-linux*|libc.so.*|libm.so.*|libdl.so.*|libpthread.so.*|librt.so.*|libnsl.so.*|libresolv.so.*|libcrypt.so.*)
+      ld-linux*|libc.so.*|libm.so.*|libdl.so.*|libpthread.so.*|librt.so.*|libnsl.so.*|libresolv.so.*|libcrypt.so.*|linux-vdso.so.*)
+        echo "    Skipping core system lib: ${BAS}"
         continue
         ;;
     esac
+    
+    LIB_IN_APPDIR="$(find "${APPDIR}/usr" -name "${BAS}" 2>/dev/null | head -n1)"
+    if [[ -n "${LIB_IN_APPDIR}" ]]; then
+      echo "    Using AppDir version: ${BAS}"
+      continue
+    fi
+    
+    echo "    Bundling system library: ${BAS}"
     TGT_DIR="${APPDIR}/usr/$(basename "$(dirname "$L")")"
     mkdir -p "$TGT_DIR"
-    rsync -a "$L" "$TGT_DIR/"
+    
+    if [[ -L "$L" ]]; then
+      REAL_FILE="$(readlink -f "$L")"
+      REAL_BAS="$(basename "$REAL_FILE")"
+      echo "      -> Following symlink to real file: ${REAL_BAS}"
+      
+      if [[ ! -f "${TGT_DIR}/${REAL_BAS}" ]]; then
+        rsync -a "$REAL_FILE" "$TGT_DIR/"
+      fi
+      
+      cd "$TGT_DIR"
+      ln -sf "$REAL_BAS" "$BAS"
+      cd - >/dev/null
+    else
+      rsync -a "$L" "$TGT_DIR/"
+    fi
   done
 else
   echo "Note: Install pax-utils for lddtree to auto-bundle libs: emerge -v app-misc/pax-utils"
@@ -129,7 +159,7 @@ fi
 echo "==> Fetching appimagetool..."
 cd "${WORKDIR}"
 if [[ ! -x appimagetool-${ARCH}.AppImage ]]; then
-  wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-"${ARCH}".AppImage
+  wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-"${ARCH}".AppImage
   chmod +x appimagetool-"${ARCH}".AppImage
 fi
 
