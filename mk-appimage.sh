@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+# Copyright (C) 2025 Stefan Cristian B.
+# GPLv2 License
+# Script to create an AppImage from a given package in Gentoo
+# Usage: mk-appimage.sh <category/pkg> <binary_name> [AppName] [march_option]
+# Example: mk-appimage.sh app-misc/jq jq JQ
+#          mk-appimage.sh app-misc/jq jq JQ native
+#          mk-appimage.sh app-misc/jq jq JQ x86-64
+#          mk-appimage.sh app-misc/jq jq JQ detect
+#          mk-appimage.sh app-misc/jq jq JQ x86-64
+
+
 set -euo pipefail
 
 if [[ $# -lt 2 ]]; then
@@ -7,7 +18,6 @@ if [[ $# -lt 2 ]]; then
   echo "         $0 app-misc/jq jq JQ native"
   echo "         $0 app-misc/jq jq JQ x86-64"
   echo "         $0 app-misc/jq jq JQ detect"
-  echo "         $0 games-strategy/seven-kingdoms 7kaa 7KAA x86-64"
   echo ""
   echo "Note: Default is x86-64 for maximum portability"
   echo "      System libraries will be bundled into the AppImage"
