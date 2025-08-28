@@ -7,6 +7,7 @@ This project aims to simplify and automate the process of building AppImages usi
 The purpose of this repository is to:
 - Automate the creation of AppImages from Gentoo packages.
 - Offer customizable scripts for various application needs.
+  For example building AppImages for different architectures much easier, in a automated way.
 - Document best practices for configuring and maintaining Gentoo systems.
 - Support both newcomers and advanced users in streamlining their Gentoo & packaging experience.
 
