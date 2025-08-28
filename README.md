@@ -1,4 +1,4 @@
-# Portage support for creating AppImages
+# Portage-based script for creating AppImages
 
 This project aims to simplify and automate the process of building AppImages using Gentoo's Portage system. It provides scripts, guides, and resources to help users create portable application bundles, making software distribution and deployment easier on Gentoo Linux.
 
@@ -8,7 +8,7 @@ The purpose of this repository is to:
 - Automate the creation of AppImages from Gentoo packages.
 - Offer customizable scripts for various application needs.
 - Document best practices for configuring and maintaining Gentoo systems.
-- Support both newcomers and advanced users in streamlining their Gentoo experience.
+- Support both newcomers and advanced users in streamlining their Gentoo & packaging experience.
 
 ## Example: Creating an AppImage
 
